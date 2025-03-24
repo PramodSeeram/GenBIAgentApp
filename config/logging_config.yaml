@@ -1,0 +1,2 @@
+LOGGING_LEVEL: DEBUG
+LOG_FILE_PATH: ./logs/app.log
