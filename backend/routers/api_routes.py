@@ -1,11 +1,11 @@
 # routers/api_routes.py
-from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
+from fastapi import APIRouter, File, UploadFile, HTTPException
 from typing import List, Dict, Any
 import os
 from models.data_model import QueryRequest, QueryResponse, FileUploadResponse
 from services.file_ingestor import process_excel_file
-from services.vectorizer import generate_embeddings
-from services.vector_db_manager import store_embeddings, query_vector_db
+from services.vector_db_manager import store_embeddings
+from services.query_processor import process_query
 
 router = APIRouter()
 
@@ -27,37 +27,26 @@ async def upload_file(file: UploadFile = File(...)):
     
     try:
         # Process the file and extract data
-        extracted_data = process_excel_file(file_path)
-        
-        # Generate embeddings for the extracted data
-        # In a production environment, this might be done asynchronously
-        embeddings = generate_embeddings(extracted_data)
+        records, text_data = process_excel_file(file_path)
         
         # Store embeddings in vector database
-        store_embeddings(embeddings, extracted_data, file.filename)
+        store_embeddings(text_data, file.filename)
         
         return {
             "message": "File uploaded and processed successfully",
             "filename": file.filename,
-            "data_preview": extracted_data[:5]  # Return first 5 rows as preview
+            "data_preview": records[:5]  # Return first 5 rows as preview
         }
     except Exception as e:
         raise HTTPException(500, f"Error processing file: {str(e)}")
 
 @router.post("/query", response_model=QueryResponse)
-async def process_query(query_data: QueryRequest):
-    """Process natural language queries"""
+async def process_user_query(query_data: QueryRequest):
+    """Process natural language queries using RAG"""
     if not query_data.query:
         raise HTTPException(400, "Query is required")
     
-    # Retrieve relevant context from vector database
-    context = query_vector_db(query_data.query)
+    # Use the RAG system to process the query
+    result = process_query(query_data.query)
     
-    # In a real implementation, you would use Azure OpenAI to generate a response
-    # based on the retrieved context
-    # For now, return a mock response
-    return {
-        "query": query_data.query,
-        "response": f"You asked: {query_data.query}. This is a mock response as the backend is still being developed.",
-        "context": [item["content"] for item in context]
-    }
+    return result

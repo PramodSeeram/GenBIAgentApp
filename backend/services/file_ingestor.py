@@ -1,9 +1,8 @@
 # services/file_ingestor.py
 import pandas as pd
 import os
-from typing import List, Dict, Any
 
-def process_excel_file(file_path: str) -> List[Dict[str, Any]]:
+def process_excel_file(file_path):
     """
     Process an Excel or CSV file and extract structured data
     """
@@ -19,9 +18,9 @@ def process_excel_file(file_path: str) -> List[Dict[str, Any]]:
         # Also prepare a text representation for embedding generation
         text_data = []
         for idx, row in df.iterrows():
-            row_text = " ".join([f"{col}: {val}" for col, val in row.items()])
+            row_text = " ".join([f"{col}: {val}" for col, val in row.items() if pd.notna(val)])
             text_data.append(row_text)
         
-        return records
+        return records, text_data
     except Exception as e:
         raise Exception(f"Error processing file: {str(e)}")

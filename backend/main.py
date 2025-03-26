@@ -2,6 +2,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import api_routes
+import os
+
+# Set environment variables for Azure OpenAI
+os.environ["AZURE_OPENAI_API_KEY"] = "2hNgRCRUWi3KFlAQuiTDWRnmyduY9bSr29kMnCXQ0oaOxHyrqkJTJQQJ99BAACYeBjFXJ3w3AAABACOGMgfH"
+os.environ["AZURE_OPENAI_ENDPOINT"] = "https://chat4baai.openai.azure.com/"
+os.environ["OPEN_API_VERSION"] = "2024-05-01-preview"
+os.environ["OPENAI_DEPLOYMENT_ID"] = "gpt-4"
 
 app = FastAPI(title="GENBI API", description="API for GENBI application")
 
