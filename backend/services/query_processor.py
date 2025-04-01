@@ -5,8 +5,8 @@ from services.vector_db_manager import query_vector_db
 
 # Initialize Azure OpenAI client
 client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", "https://chat4baai.openai.azure.com/"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY", "2hNgRCRUWi3KFlAQuiTDWRnmyduY9bSr29kMnCXQ0oaOxHyrqkJTJQQJ99BAACYeBjFXJ3w3AAABACOGMgfH"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
     api_version=os.getenv("OPEN_API_VERSION", "2024-05-01-preview")
 )
 
