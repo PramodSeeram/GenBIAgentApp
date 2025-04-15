@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environment
+env/
+venv/
+ENV/
+.venv/
+.venv/
+
+# Environment variables
+.env
+*.env
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Logs
+*.log
+
+# Coverage reports
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+
+# Pytest
+.cache
+pytest_cache/
+
+# Qdrant client files (if any)
+*.qdrant
+
+# Miscellaneous
+*.DS_Store
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.pid
+*.seed
+*.sqlite3
