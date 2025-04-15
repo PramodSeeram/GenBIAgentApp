@@ -1,11 +1,16 @@
 import os
 from fastapi import UploadFile
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx", ".xltm", ".xlt"}
 MIME_TYPE_MAP = {
-    ".csv": ["text/csv", "text/plain", "application/vnd.ms-excel"],
+    ".csv": ["text/csv", "text/plain", "application/vnd.ms-excel", "application/csv", "text/x-csv"],
     ".xlsx": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-    ".xls": ["application/vnd.ms-excel"]
+    ".xls": ["application/vnd.ms-excel"],
+    ".xlsm": ["application/vnd.ms-excel.sheet.macroEnabled.12"],
+    ".xlsb": ["application/vnd.ms-excel.sheet.binary.macroEnabled.12"],
+    ".xltx": ["application/vnd.openxmlformats-officedocument.spreadsheetml.template"],
+    ".xltm": ["application/vnd.ms-excel.template.macroEnabled.12"],
+    ".xlt": ["application/vnd.ms-excel"]
 }
 
 def validate_file(file: UploadFile):

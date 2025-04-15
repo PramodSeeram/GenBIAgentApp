@@ -9,13 +9,6 @@ def get_embeddings():
         api_key=settings.AZURE_OPENAI_API_KEY
     )
 
-# def get_embeddings():
-#     return AzureOpenAIEmbeddings(
-#         azure_deployment=settings.EMBEDDINGS_DEPLOYMENT_NAME,
-#         openai_api_version="2023-05-15",
-#         azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-#         api_key=settings.AZURE_OPENAI_API_KEY
-#     )
 
 def get_llm():
     return AzureChatOpenAI(

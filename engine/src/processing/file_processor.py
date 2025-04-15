@@ -12,7 +12,7 @@ class FileProcessor:
         # Initialize loader with proper encoding
         if ext == ".csv":
             loader = CSVLoader(file_path, encoding='utf-8-sig')  # Handle BOM
-        elif ext in (".xlsx", ".xls"):
+        elif ext in (".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx", ".xltm", ".xlt"):
             # Using elements mode can sometimes be better for structure
             loader = UnstructuredExcelLoader(file_path, mode="elements") 
         else:
