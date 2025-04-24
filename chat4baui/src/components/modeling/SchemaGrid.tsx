@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import SchemaCard from './SchemaCard';
 import { useTheme } from '@/hooks/useTheme';
@@ -6,33 +5,47 @@ import { cn } from '@/lib/utils';
 
 interface SchemaGridProps {
   schemas: Array<{
-    id: string;
-    title: string;
-    columns: Array<{ name: string; type: string }>;
+    id?: string;
+    name?: string;
+    title?: string;
+    columns?: Array<{ name: string; type: string }>;
+    fields?: Array<{ name: string; type: string; required?: boolean }>;
     position?: { x: number, y: number };
   }>;
   displayedSchemas: string[];
   relations?: Array<{from: string; to: string; fromField: string; toField: string}>;
+  onSchemaClick?: (schemaName: string) => void;
 }
 
-const SchemaGrid: React.FC<SchemaGridProps> = ({ schemas, displayedSchemas, relations }) => {
+const SchemaGrid: React.FC<SchemaGridProps> = ({ 
+  schemas, 
+  displayedSchemas, 
+  relations = [],
+  onSchemaClick
+}) => {
   const { theme } = useTheme();
   const [schemaPositions, setSchemaPositions] = useState<Record<string, {x: number, y: number}>>({});
   const gridRef = useRef<HTMLDivElement>(null);
-  const filteredSchemas = schemas.filter(schema => displayedSchemas.includes(schema.id));
+  
+  // Filter schemas by name or id
+  const filteredSchemas = schemas.filter(schema => {
+    const schemaId = schema.id || schema.name || '';
+    return displayedSchemas.includes(schemaId);
+  });
   
   // Initialize positions from schema data or use defaults
   useEffect(() => {
     const initialPositions: Record<string, {x: number, y: number}> = {};
     
     filteredSchemas.forEach((schema, index) => {
+      const schemaId = schema.id || schema.name || '';
       if (schema.position) {
-        initialPositions[schema.id] = schema.position;
+        initialPositions[schemaId] = schema.position;
       } else {
         // Default positioning if not specified
         const col = index % 2;
         const row = Math.floor(index / 2);
-        initialPositions[schema.id] = {
+        initialPositions[schemaId] = {
           x: 20 + col * 340,
           y: 50 + row * 300
         };
@@ -47,6 +60,16 @@ const SchemaGrid: React.FC<SchemaGridProps> = ({ schemas, displayedSchemas, rela
       ...prev,
       [id]: { x, y }
     }));
+  };
+  
+  const handleSchemaClick = (schemaId: string) => {
+    if (onSchemaClick) {
+      // Find the schema by id
+      const schema = schemas.find(s => (s.id || s.name) === schemaId);
+      if (schema) {
+        onSchemaClick(schema.name || schema.id || schemaId);
+      }
+    }
   };
   
   const drawRelationLines = () => {
@@ -84,7 +107,7 @@ const SchemaGrid: React.FC<SchemaGridProps> = ({ schemas, displayedSchemas, rela
   };
 
   return (
-    <main ref={gridRef} className="flex-1 bg-background p-4 overflow-auto relative h-full transition-colors duration-300">
+    <main ref={gridRef} className="flex-1 bg-background overflow-auto relative h-full transition-colors duration-300">
       {/* SVG definitions for arrows */}
       <svg className="absolute w-0 h-0">
         <defs>
@@ -111,11 +134,21 @@ const SchemaGrid: React.FC<SchemaGridProps> = ({ schemas, displayedSchemas, rela
       {/* Render schema cards */}
       {filteredSchemas.map((schema, index) => (
         <SchemaCard
-          key={schema.id}
-          schema={schema}
+          key={schema.id || schema.name || index}
+          schema={{
+            ...schema,
+            id: schema.id || schema.name || `schema-${index}`,
+            title: schema.title || schema.name || `Schema ${index + 1}`,
+            columns: schema.columns || 
+              (schema.fields ? schema.fields.map(f => ({ 
+                name: f.name, 
+                type: f.type || 'string' 
+              })) : [])
+          }}
           isSecondRow={index >= 2}
           onPositionChange={handlePositionChange}
-          relations={relations?.filter(r => r.from === schema.id || r.to === schema.id)}
+          relations={relations?.filter(r => r.from === (schema.id || schema.name) || r.to === (schema.id || schema.name))}
+          onClick={() => handleSchemaClick(schema.id || schema.name || `schema-${index}`)}
         />
       ))}
     </main>

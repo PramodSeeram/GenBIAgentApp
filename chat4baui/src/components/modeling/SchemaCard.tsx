@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { 
@@ -23,6 +22,7 @@ interface SchemaCardProps {
   relations?: Array<{from: string; to: string; fromField: string; toField: string}>;
   selectedColumns?: string[];
   onSelectColumn?: (name: string) => void;
+  onClick?: () => void;
 }
 
 const SchemaCard: React.FC<SchemaCardProps> = ({ 
@@ -31,41 +31,70 @@ const SchemaCard: React.FC<SchemaCardProps> = ({
   onPositionChange, 
   relations,
   selectedColumns = [],
-  onSelectColumn
+  onSelectColumn,
+  onClick
 }) => {
   const [expanded, setExpanded] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { position, nodeRef } = useDrag({
     id: schema.id,
+    onDragStart: () => setIsDragging(true),
     onDragEnd: (x, y) => {
       if (onPositionChange) {
         onPositionChange(schema.id, x, y);
       }
+      // Wait a bit before allowing clicks again to prevent click after drag
+      setTimeout(() => setIsDragging(false), 100);
     }
   });
 
-  const toggleExpand = () => setExpanded(!expanded);
+  const toggleExpand = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded(!expanded);
+  };
+
+  const handleCardClick = () => {
+    if (!isDragging && onClick) {
+      onClick();
+    }
+  };
 
   // Filter relations for this schema
   const schemaRelations = relations?.filter(
     r => r.from === schema.id || r.to === schema.id
   );
 
-  const handleColumnClick = (columnName: string) => {
+  const handleColumnClick = (e: React.MouseEvent, columnName: string) => {
+    e.stopPropagation();
     if (onSelectColumn) {
       onSelectColumn(columnName);
     }
   };
 
+  const getTypeIcon = (type: string) => {
+    const lowerType = type.toLowerCase();
+    if (lowerType === 'key' || lowerType === 'id') return <KeyIcon className="h-4 w-4 mr-2 text-muted-foreground" />;
+    if (lowerType === 'date' || lowerType === 'timestamp' || lowerType === 'datetime') return <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground" />;
+    if (lowerType === 'text' || lowerType === 'string') return <TextIcon className="h-4 w-4 mr-2 text-muted-foreground" />;
+    if (lowerType === 'number' || lowerType === 'integer' || lowerType === 'float' || lowerType === 'decimal') return <NumberIcon className="h-4 w-4 mr-2 text-muted-foreground" />;
+    if (lowerType === 'flag' || lowerType === 'boolean') return <FlagIcon className="h-4 w-4 mr-2 text-muted-foreground" />;
+    return <TextIcon className="h-4 w-4 mr-2 text-muted-foreground" />;
+  };
+
   return (
     <Card 
       ref={nodeRef}
-      className="overflow-hidden border border-border absolute cursor-move shadow-lg hover:shadow-xl transition-shadow duration-300 animate-fade-in dark:bg-card"
+      className={cn(
+        "overflow-hidden border border-border absolute shadow-lg transition-all duration-300 animate-fade-in dark:bg-card",
+        onClick ? "cursor-pointer hover:ring-2 hover:ring-primary/50" : "cursor-move hover:shadow-xl"
+      )}
       style={{
         transform: `translate(${position.x}px, ${position.y}px)`,
         width: '320px',
         zIndex: 10
       }}
+      onClick={handleCardClick}
     >
       <div className="bg-primary/90 text-primary-foreground px-4 py-2 flex items-center justify-between">
         <div className="flex items-center">
@@ -94,14 +123,10 @@ const SchemaCard: React.FC<SchemaCardProps> = ({
                   "border-b border-border hover:bg-accent/50 transition-colors cursor-pointer",
                   selectedColumns.includes(column.name) && "bg-accent"
                 )}
-                onClick={() => handleColumnClick(column.name)}
+                onClick={(e) => handleColumnClick(e, column.name)}
               >
                 <td className="px-4 py-1.5 flex items-center">
-                  {column.type === 'key' && <KeyIcon className="h-4 w-4 mr-2 text-muted-foreground" />}
-                  {column.type === 'date' && <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground" />}
-                  {column.type === 'text' && <TextIcon className="h-4 w-4 mr-2 text-muted-foreground" />}
-                  {column.type === 'number' && <NumberIcon className="h-4 w-4 mr-2 text-muted-foreground" />}
-                  {column.type === 'flag' && <FlagIcon className="h-4 w-4 mr-2 text-muted-foreground" />}
+                  {getTypeIcon(column.type)}
                   {column.name}
                 </td>
               </tr>

@@ -4,52 +4,17 @@ from src.processing.file_processor import FileProcessor
 from src.utils.security import validate_file
 import tempfile
 import os
+import logging
+import pandas as pd
+from io import BytesIO
+from typing import List
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-@router.post("/preview")
-async def preview_files(files: list[UploadFile] = File(...)):
-    """Full content preview endpoint using [4] patterns"""
-    results = []
-    
-    for file in files:
-        try:
-            # Validate first
-            validate_file(file)
-            
-            # Save with original extension
-            ext = os.path.splitext(file.filename)[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp:
-                content = await file.read()
-                temp.write(content)
-                temp_path = temp.name
-            
-            # Process file
-            chunks = FileProcessor.process_file(temp_path)
-            
-            results.append({
-                "filename": file.filename,
-                "preview": [{
-                    "content": chunk.page_content,
-                    "metadata": dict(chunk.metadata)
-                } for chunk in chunks],
-                "status": "success"
-            })
-            
-        except Exception as e:
-            results.append({
-                "filename": file.filename,
-                "status": "error", 
-                "error": str(e)
-            })
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-    
-    return JSONResponse(content={"files": results})
 
 @router.post("/process")
-async def process_files(files: list[UploadFile] = File(...)):
+async def process_files(files: List[UploadFile] = File(...)):
     """
     Process the uploaded files, convert to embeddings, and store in Qdrant.
     Returns the collection names and processing information.
@@ -88,3 +53,7 @@ async def process_files(files: list[UploadFile] = File(...)):
                 os.unlink(temp_path)
     
     return JSONResponse(content={"files": results})
+
+@router.options("/process")
+async def options_handler():
+    return {"status": "ok"}

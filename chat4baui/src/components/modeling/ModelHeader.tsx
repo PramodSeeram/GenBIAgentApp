@@ -12,7 +12,7 @@ const ModelHeader = () => {
       <div className="flex items-center">
         <div className="mr-4">
           <img 
-            src="/lovable-uploads/3e1ee360-da09-4f2a-bb6b-83fd2b834e3c.png" 
+            src="/lovable-uploads/Favicon-_1_-removebg-preview.png" 
             className="h-8 w-8"
             alt="Chat4BA Logo" 
           />

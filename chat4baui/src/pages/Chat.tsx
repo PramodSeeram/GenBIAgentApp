@@ -1,16 +1,16 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ChatSidebar from '@/components/chat/ChatSidebar';
-import ChatMain from '@/components/chat/ChatMain';
+import ChatMain, { Message } from '@/components/chat/ChatMain';
 import ChatInput from '@/components/chat/ChatInput';
 import { Button } from '@/components/ui/button';
-import { Home, Database, RefreshCw, Sun, Moon, Check, ChevronDown, CircleCheck, Globe } from 'lucide-react';
+import { Home, Database, RefreshCw, Sun, Moon, Check, ChevronDown, CircleCheck, Globe, XCircle } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
+import { askAllCollections } from '@/services/api';
 
 interface LLMModel {
   id: string;
@@ -21,11 +21,18 @@ interface LLMModel {
   isPro?: boolean;
 }
 
+interface ProcessingStep {
+  step: string;
+  status: 'pending' | 'complete' | 'error';
+  detail?: string;
+}
+
 const Chat = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingSteps, setProcessingSteps] = useState<{step: string, status: 'pending' | 'complete' | 'error'}[]>([]);
+  const [processingSteps, setProcessingSteps] = useState<ProcessingStep[]>([]);
   const [activeModel, setActiveModel] = useState<LLMModel>({
     id: 'best',
     name: 'Best',
@@ -79,65 +86,80 @@ const Chat = () => {
     }
   ];
 
-  // Simulate data processing steps for demonstration
-  const simulateProcessing = () => {
+  // Function to handle sending a message
+  const handleSendMessage = async (query: string) => {
+    if (!query.trim() || isProcessing) return;
+
+    // Add user message to chat
+    const userMessage: Message = { 
+      id: Date.now().toString(), 
+      sender: 'user', 
+      content: query 
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     setIsProcessing(true);
-    setProcessingSteps([{ step: 'Parsing query...', status: 'pending' }]);
-    
-    setTimeout(() => {
-      setProcessingSteps(prev => [
-        { step: 'Parsing query...', status: 'complete' },
-        { step: 'Identifying data sources...', status: 'pending' }
-      ]);
+    setProcessingSteps([{ step: 'Querying AI across documents...', status: 'pending' }]);
+
+    try {
+      // Call the API
+      const response = await askAllCollections(query);
       
+      setProcessingSteps([{ step: 'Querying AI across documents...', status: 'complete' }]);
+
+      // Add AI response to chat
+      if (response && response.answer) {
+        const aiMessage: Message = { 
+          id: (Date.now() + 1).toString(), 
+          sender: 'ai', 
+          content: response.answer 
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        throw new Error('Invalid response format from AI');
+      }
+
+      toast({
+        title: "Response received",
+        description: "Got answer from the AI"
+      });
+
+    } catch (error) {
+      setProcessingSteps([{ step: 'Error processing query', status: 'error' }]);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+      toast({
+        title: "Failed to get response", 
+        description: errorMessage,
+        variant: "destructive"
+      });
+
+      // Add error message to chat (optional)
+      const errorMessageObj: Message = { 
+        id: (Date.now() + 1).toString(), 
+        sender: 'ai', 
+        content: `Sorry, I couldn't process your request: ${errorMessage}`, 
+        isError: true 
+      };
+      setMessages(prev => [...prev, errorMessageObj]);
+
+    } finally {
+      // Clear processing indicator after a delay
       setTimeout(() => {
-        setProcessingSteps(prev => [
-          ...prev.slice(0, 1),
-          { step: 'Identifying data sources...', status: 'complete' },
-          { step: 'Retrieving schema information...', status: 'pending' }
-        ]);
-        
-        setTimeout(() => {
-          setProcessingSteps(prev => [
-            ...prev.slice(0, 2),
-            { step: 'Retrieving schema information...', status: 'complete' },
-            { step: 'Executing SQL query...', status: 'pending' }
-          ]);
-          
-          setTimeout(() => {
-            setProcessingSteps(prev => [
-              ...prev.slice(0, 3),
-              { step: 'Executing SQL query...', status: 'complete' },
-              { step: 'Generating response with ' + activeModel.name + '...', status: 'pending' }
-            ]);
-            
-            setTimeout(() => {
-              setProcessingSteps(prev => [
-                ...prev.slice(0, 4),
-                { step: 'Generating response with ' + activeModel.name + '...', status: 'complete' }
-              ]);
-              
-              setTimeout(() => {
-                setIsProcessing(false);
-                setProcessingSteps([]);
-              }, 1000);
-            }, 800);
-          }, 1200);
-        }, 1000);
-      }, 800);
-    }, 1000);
+        setIsProcessing(false);
+        setProcessingSteps([]);
+      }, 1000);
+    }
   };
 
   const handleModelChange = (modelId: string) => {
     const selectedModel = llmModels.find(model => model.id === modelId);
     if (selectedModel) {
-      if (selectedModel.isPro) {
-        toast.info(`Switched to ${selectedModel.name} model`, {
-          description: `You're now using ${selectedModel.provider}'s advanced model`
-        });
-      } else {
-        toast.success(`Switched to ${selectedModel.name} model`);
-      }
+      toast({
+        title: `Switched to ${selectedModel.name} model`,
+        description: selectedModel.isPro ? 
+          `You're now using ${selectedModel.provider}'s advanced model` : 
+          undefined
+      });
       setActiveModel(selectedModel);
       setModelSelectorOpen(false);
     }
@@ -183,7 +205,7 @@ const Chat = () => {
                           <CommandItem 
                             key={model.id}
                             value={model.id}
-                            onSelect={handleModelChange}
+                            onSelect={() => handleModelChange(model.id)}
                             className="flex items-center justify-between cursor-pointer"
                           >
                             <div className="flex flex-col">
@@ -229,7 +251,7 @@ const Chat = () => {
           </div>
         </div>
         
-        <ChatMain theme={theme} />
+        <ChatMain theme={theme} messages={messages} />
         
         {/* Processing indicator */}
         {isProcessing && (
@@ -239,9 +261,9 @@ const Chat = () => {
               {processingSteps.map((step, index) => (
                 <div key={index} className="flex items-center gap-2">
                   {step.status === 'pending' && <RefreshCw size={14} className="animate-spin text-blue-500" />}
-                  {step.status === 'complete' && <div className="h-3.5 w-3.5 rounded-full bg-green-500"></div>}
-                  {step.status === 'error' && <div className="h-3.5 w-3.5 rounded-full bg-red-500"></div>}
-                  <span className={`text-sm ${step.status === 'pending' ? 'text-blue-500 font-medium' : ''}`}>
+                  {step.status === 'complete' && <CircleCheck size={14} className="text-green-500" />}
+                  {step.status === 'error' && <XCircle size={14} className="text-red-500" />}
+                  <span className={`text-sm ${step.status === 'pending' ? 'text-blue-500 font-medium' : step.status === 'error' ? 'text-red-500' : ''}`}>
                     {step.step}
                   </span>
                 </div>
@@ -251,7 +273,7 @@ const Chat = () => {
         )}
         
         {/* Chat Input */}
-        <ChatInput onSubmit={simulateProcessing} theme={theme} />
+        <ChatInput onSubmit={handleSendMessage} theme={theme} />
       </div>
     </div>
   );

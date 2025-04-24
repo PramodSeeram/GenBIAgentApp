@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "framer-motion": "^12.7.4",
+    "xlsx": "^0.18.5"
+  }
+}

@@ -55,6 +55,3 @@ pytest_cache/
 *.pid
 *.seed
 *.sqlite3
-
-
-GenBIAgentApp/chat4baui/node_modules

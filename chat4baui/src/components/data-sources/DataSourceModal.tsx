@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +17,10 @@ import {
   TrinoIcon, 
   SnowflakeIcon 
 } from './icons/DataSourceIcons';
+import { Button } from '@/components/ui/button';
+import PreviewContent from './PreviewContent';
+import { toast } from '@/hooks/use-toast';
+import { previewFiles } from '@/services/api';
 
 type DataSourceType = 'PDF' | 'Excel/CSV' | 'Word' | 'PowerPoint' | 
                      'BigQuery' | 'PostgreSQL' | 'MySQL' | 'SQLServer' | 
@@ -27,13 +30,20 @@ interface DataSourceModalProps {
   isOpen: boolean;
   onClose: () => void;
   sourceType: DataSourceType | null;
+  onUploadSuccess?: (fileName: string, sourceType: DataSourceType) => void;
 }
 
 export default function DataSourceModal({ 
   isOpen, 
   onClose, 
-  sourceType 
+  sourceType,
+  onUploadSuccess
 }: DataSourceModalProps) {
+  const [previewMode, setPreviewMode] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
   // Map file types to their acceptance patterns
   const fileTypeToAccept: Record<string, string> = {
     'PDF': '.pdf',
@@ -84,31 +94,102 @@ export default function DataSourceModal({
   const isFileUpload = sourceType === 'PDF' || sourceType === 'Excel/CSV' || 
                        sourceType === 'Word' || sourceType === 'PowerPoint';
 
+  // Handle files selection before upload
+  const handleFilesSelected = (files: File[]) => {
+    setSelectedFiles(files);
+  };
+
+  // Handle preview request
+  const handlePreview = async () => {
+    if (selectedFiles.length === 0) {
+      toast({
+        title: "No files selected",
+        description: "Please select files to preview first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await previewFiles(selectedFiles);
+      setPreviewData(response);
+      setPreviewMode(true);
+      toast({
+        title: "Preview generated",
+        description: "Successfully generated preview for the selected files"
+      });
+    } catch (error) {
+      toast({
+        title: "Preview failed",
+        description: error instanceof Error ? error.message : "Could not generate preview",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle back from preview mode
+  const handleBackFromPreview = () => {
+    setPreviewMode(false);
+    setPreviewData(null);
+  };
+
+  // Handle successful file upload
+  const handleUploadSuccess = (fileName: string) => {
+    if (sourceType && onUploadSuccess) {
+      onUploadSuccess(fileName, sourceType);
+      toast({
+        title: "Upload successful",
+        description: `Successfully uploaded ${fileName}`
+      });
+      onClose();
+    }
+  };
+
+  // Handle modal close - reset state
+  const handleClose = () => {
+    setPreviewMode(false);
+    setSelectedFiles([]);
+    setPreviewData(null);
+    onClose();
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="sm:max-w-[500px] animate-enter">
+    <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
+      <DialogContent className="sm:max-w-[700px] animate-enter">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isFileUpload && sourceType && getFileTypeIcon(sourceType)}
             {!isFileUpload && sourceType && getDatabaseIcon(sourceType)}
-            {sourceType}
+            {previewMode ? `Preview ${sourceType} Data` : sourceType}
           </DialogTitle>
         </DialogHeader>
         
-        {isFileUpload && sourceType && (
+        {previewMode ? (
+          <PreviewContent 
+            data={previewData} 
+            onBack={handleBackFromPreview}
+            sourceType={sourceType}
+            fileName={selectedFiles[0]?.name}
+          />
+        ) : isFileUpload && sourceType ? (
           <DataUploader 
             fileType={sourceType} 
             accept={fileTypeToAccept[sourceType] || ''}
-            maxSize={50} 
+            maxSize={50}
+            onUploadSuccess={handleUploadSuccess}
+            onFilesSelected={handleFilesSelected}
+            onPreviewRequest={handlePreview}
+            isLoading={isLoading}
           />
-        )}
-        
-        {!isFileUpload && sourceType && (
+        ) : !isFileUpload && sourceType ? (
           <DatabaseConnector 
             databaseType={sourceType} 
             icon={getDatabaseIcon(sourceType)} 
           />
-        )}
+        ) : null}
       </DialogContent>
     </Dialog>
   );
