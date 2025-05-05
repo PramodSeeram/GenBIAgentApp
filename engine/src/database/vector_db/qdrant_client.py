@@ -4,9 +4,10 @@ import os
 import uuid
 import logging
 from dotenv import load_dotenv
+from src.config.settings import settings  # Import settings
 
 # Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env.dev')
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 logger = logging.getLogger(__name__)
@@ -17,10 +18,10 @@ _qdrant_client = None
 def initialize_qdrant_client():
     global _qdrant_client
     if _qdrant_client is None:
-        qdrant_url = os.getenv("QDRANT_URL")
-        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        qdrant_url = settings.QDRANT_ENDPOINT
+        qdrant_api_key = settings.QDRANT_API_KEY
         if not qdrant_url:
-            raise ValueError("QDRANT_URL environment variable not set.")
+            raise ValueError("QDRANT_ENDPOINT environment variable not set.")
         logger.info(f"Initializing Qdrant client with URL: {qdrant_url}")
         try:
             _qdrant_client = QdrantClient(

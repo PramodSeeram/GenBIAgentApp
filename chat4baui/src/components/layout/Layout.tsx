@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -11,6 +10,10 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const isLoginPage = location.pathname === '/login';
+  
+  useEffect(() => {
+    console.log("Layout mounted, path:", location.pathname);
+  }, [location.pathname]);
   
   // Don't show sidebar on login page
   if (isLoginPage) {

@@ -90,6 +90,8 @@ const Chat = () => {
   const handleSendMessage = async (query: string) => {
     if (!query.trim() || isProcessing) return;
 
+    console.log("Chat: Sending message to backend:", query);
+
     // Add user message to chat
     const userMessage: Message = { 
       id: Date.now().toString(), 
@@ -102,38 +104,45 @@ const Chat = () => {
     setProcessingSteps([{ step: 'Querying AI across documents...', status: 'pending' }]);
 
     try {
-      // Call the API
+      console.log('Sending query to backend:', query);
+      
+      // Call the API with explicit debugging
       const response = await askAllCollections(query);
+      console.log('Received response from backend:', response);
       
       setProcessingSteps([{ step: 'Querying AI across documents...', status: 'complete' }]);
 
       // Add AI response to chat
       if (response && response.answer) {
+        console.log('Processing valid response with answer:', response.answer.substring(0, 50) + '...');
+        
         const aiMessage: Message = { 
           id: (Date.now() + 1).toString(), 
           sender: 'ai', 
           content: response.answer 
         };
         setMessages(prev => [...prev, aiMessage]);
+        
+        toast({
+          title: "Response received",
+          description: "Got answer from the AI"
+        });
       } else {
+        console.error('Invalid response format from AI:', response);
         throw new Error('Invalid response format from AI');
       }
-
-      toast({
-        title: "Response received",
-        description: "Got answer from the AI"
-      });
-
     } catch (error) {
+      console.error('Error in handleSendMessage:', error);
       setProcessingSteps([{ step: 'Error processing query', status: 'error' }]);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+      
       toast({
         title: "Failed to get response", 
         description: errorMessage,
         variant: "destructive"
       });
 
-      // Add error message to chat (optional)
+      // Add error message to chat
       const errorMessageObj: Message = { 
         id: (Date.now() + 1).toString(), 
         sender: 'ai', 
@@ -141,7 +150,6 @@ const Chat = () => {
         isError: true 
       };
       setMessages(prev => [...prev, errorMessageObj]);
-
     } finally {
       // Clear processing indicator after a delay
       setTimeout(() => {

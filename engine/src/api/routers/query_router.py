@@ -126,7 +126,6 @@ async def cross_collection_query(data: MultiCollectionRequest, client = Depends(
         logger.error(f"Error processing multi-collection query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-
 @router.post("/ask/all-collections")
 async def query_all_collections(data: QueryRequest, client = Depends(get_db_client)):
     """Processes a query across all available collections."""

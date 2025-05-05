@@ -5,22 +5,25 @@ from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
+from src.config.settings import settings  # Import settings
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
 
 # --- Environment Variable Loading ---
-# Calculate the path to the .env.dev file relative to this script's location
-# Assumes .env.dev is in the 'engine' directory, 3 levels up from 'src/llm/providers'
+# Calculate the path to the .env file relative to this script's location
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env'))
 logger.info(f"Attempting to load environment variables from: {dotenv_path}")
 
-# Load the .env.dev file. If it returns False, the file might be missing or unreadable.
+# Load the .env file. If it returns False, the file might be missing or unreadable.
 loaded = load_dotenv(dotenv_path=dotenv_path, override=True) # Override ensures fresh load on reload
 if not loaded:
     logger.warning(f".env file not found or failed to load from {dotenv_path}. Relying on system environment variables.")
 else:
     logger.info(f".env file loaded successfully from {dotenv_path}")
+
+# Default API version if not provided
+DEFAULT_API_VERSION = "2023-05-15"
 
 # --- Debug: Print loaded variables ---
 # It's helpful to see exactly what os.getenv is retrieving right after loading
@@ -35,19 +38,20 @@ else:
 class AzureOpenAIProvider:
     def __init__(self):
         logger.info("Initializing AzureOpenAIProvider...")
-        self.api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        self.embedding_deployment = os.getenv("AZURE_EMBEDDING_DEPLOYMENT")
-        self.chat_deployment = os.getenv("AZURE_CHAT_DEPLOYMENT")
-        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+        # Use settings from settings.py instead of direct environment variables
+        self.api_key = settings.AZURE_OPENAI_API_KEY
+        self.endpoint = settings.AZURE_OPENAI_ENDPOINT
+        self.embedding_deployment = settings.EMBEDDINGS_DEPLOYMENT_NAME
+        self.chat_deployment = settings.OPENAI_DEPLOYMENT_NAME
+        # Use default API version if not provided in environment
+        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_API_VERSION)
 
         # Check if any variable is None or empty string
         required_vars = {
             "AZURE_OPENAI_API_KEY": self.api_key,
             "AZURE_OPENAI_ENDPOINT": self.endpoint,
-            "AZURE_EMBEDDING_DEPLOYMENT": self.embedding_deployment,
-            "AZURE_CHAT_DEPLOYMENT": self.chat_deployment,
-            "AZURE_OPENAI_API_VERSION": self.api_version
+            "EMBEDDINGS_DEPLOYMENT_NAME": self.embedding_deployment,
+            "OPENAI_DEPLOYMENT_NAME": self.chat_deployment
         }
         missing_vars = [name for name, value in required_vars.items() if not value]
 

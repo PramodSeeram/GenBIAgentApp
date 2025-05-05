@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
 # Import router modules directly
-from src.api.routers import upload_router, query_router
+from src.api.routers import router as api_router
 from src.database.vector_db.qdrant_client import initialize_qdrant_client # For startup check
 
 # Configure basic logging
@@ -23,19 +23,14 @@ app = FastAPI(
 )
 
 # --- CORS Middleware ---
-# Adjust origins based on your frontend URL in production
-origins = [
-    "http://localhost",
-    "http://localhost:3000", # Example for React dev server
-    "http://localhost:8080", # Example for Vue dev server
-    # Add your production frontend URL here
-]
+# Allow requests from frontend with proper preflight handling
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # More specific than "*"
+    allow_origins=["*"],       # Allow all origins for development
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"], # Be specific
-    allow_headers=["*"], # Or list specific headers like Content-Type, Authorization
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicitly list methods
+    allow_headers=["*"],       # Allow all headers
+    expose_headers=["*"]       # Expose all headers
 )
 
 # --- Event Handlers ---
@@ -60,7 +55,6 @@ async def shutdown_event():
     # Add cleanup logic here if needed (e.g., closing database connections)
     logger.info("Application shutdown complete.")
 
-
 # --- Root Endpoint ---
 @app.get("/", tags=["Root"])
 async def read_root():
@@ -69,12 +63,11 @@ async def read_root():
         "message": "Welcome to the Chat4BA Engine API",
         "docs_url": "/docs",
         "redoc_url": "/redoc"
-        }
+    }
 
 # --- Include API Routers ---
-# Group endpoints logically using tags
-app.include_router(upload_router.router, prefix="/api/data", tags=["Data Management"])
-app.include_router(query_router.router, prefix="/api/query", tags=["Query & Analysis"])
+# Use the main router that includes all sub-routers
+app.include_router(api_router, prefix="/api")
 
 logger.info("FastAPI application configuration complete. Ready to serve requests.")
 
@@ -83,4 +76,4 @@ logger.info("FastAPI application configuration complete. Ready to serve requests
 if __name__ == "__main__":
     import uvicorn
     logger.info("Running Uvicorn server directly (for debugging)...")
-    uvicorn.run("main:app", host="0.0.0.0", port=8003, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

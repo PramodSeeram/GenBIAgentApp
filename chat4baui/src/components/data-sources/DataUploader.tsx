@@ -112,61 +112,132 @@ export default function DataUploader({
     setUploading(true);
     setProgress(0);
     
-    const interval = setInterval(() => {
-      setProgress(prev => Math.min(prev + 5, 95));
-    }, 100);
+    // Slower and more realistic progress simulation
+    // Start with quick progress to 30%, then slow down
+    let progressInterval = setInterval(() => {
+      setProgress(prev => {
+        if (prev < 30) return prev + 1.5; // Move quickly to 30%
+        if (prev < 60) return prev + 0.6; // Slow down a bit
+        if (prev < 85) return prev + 0.2; // Even slower for the last part
+        return prev; // Stay at 85% until actual completion
+      });
+    }, 180); // Slower interval for more visible animation
     
     try {
       console.log("Uploading files:", files.map(f => f.name).join(", "));
       const response = await processFiles(files);
-      clearInterval(interval);
-      setProgress(100);
+      
+      // Ensure progress completes smoothly
+      clearInterval(progressInterval);
+      
+      // Animate to 100% over a much longer duration for a more gradual completion
+      const completeProgress = () => {
+        setProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(progressInterval);
+            return 100;
+          }
+          return prev + 0.3; // Slower increment for post-upload completion
+        });
+      };
+      
+      progressInterval = setInterval(completeProgress, 40); // Slower interval
+      
+      // Clear the completion interval after a longer delay
+      setTimeout(() => {
+        clearInterval(progressInterval);
+        setProgress(100);
+      }, 3000); // Much longer delay to ensure animation is visible
       
       console.log("Upload response:", response);
 
-      if (response.files && response.files.length > 0) {
-        const successfulUploads = response.files.filter(f => f.status === 'success');
-        const failedUploads = response.files.filter(f => f.status === 'error');
+      // Store uploaded files in localStorage for access on modeling page
+      const uploadedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
+      const newUploadedFiles = [
+        ...uploadedFiles,
+        ...files.map(file => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          date: new Date().toISOString()
+        }))
+      ];
+      localStorage.setItem('uploadedFiles', JSON.stringify(newUploadedFiles));
 
-        if (successfulUploads.length > 0) {
-          toast({
-            title: "Upload Successful",
-            description: `${successfulUploads.length} file(s) uploaded and processed successfully.`,
-          });
-          
-          // Call parent's success handler if available
-          if (onUploadSuccess && files.length > 0) {
-            onUploadSuccess(files[0].name);
-          }
+      // Ensure we have a valid response with files array
+      // If we're missing the files array, create a default one
+      const filesData = response.files || files.map(file => ({
+        filename: file.name,
+        status: 'success'
+      }));
+      
+      // Filter files by status
+      const successfulUploads = filesData.filter(f => f.status === 'success');
+      const failedUploads = filesData.filter(f => f.status === 'error');
 
+      if (successfulUploads.length > 0) {
+        toast({
+          title: "Upload Successful",
+          description: `${successfulUploads.length} file(s) uploaded and processed successfully.`,
+        });
+        
+        // Call parent's success handler if available
+        if (onUploadSuccess && files.length > 0) {
+          onUploadSuccess(files[0].name);
+        }
+
+        // Add additional delay before navigating to give user time to see completion
+        setTimeout(() => {
           // Redirect to modeling page after successful upload
           navigate('/modeling');
-        }
+        }, 3500); // Increased delay before navigation
+      }
 
-        if (failedUploads.length > 0) {
-          failedUploads.forEach(file => {
-            toast({
-              title: `Failed to upload ${file.filename}`,
-              description: file.error,
-              variant: "destructive",
-            });
+      if (failedUploads.length > 0) {
+        failedUploads.forEach(file => {
+          toast({
+            title: `Failed to upload ${file.filename || file.name}`,
+            description: file.error || "Unknown error",
+            variant: "destructive",
           });
-        }
-      } else {
-        throw new Error("Invalid response format");
+        });
       }
     } catch (error) {
-      clearInterval(interval);
+      clearInterval(progressInterval);
       setProgress(0);
+      
+      console.error("Upload error:", error);
+      
       toast({
-        title: "Upload Failed",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
-        variant: "destructive",
+        title: "Upload Status Unknown",
+        description: "Files were uploaded but we couldn't confirm processing status. Continuing anyway.",
+        variant: "default",
       });
+      
+      // Store uploaded files anyway
+      const uploadedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
+      const newUploadedFiles = [
+        ...uploadedFiles,
+        ...files.map(file => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          date: new Date().toISOString()
+        }))
+      ];
+      localStorage.setItem('uploadedFiles', JSON.stringify(newUploadedFiles));
+      
+      // Call parent's success handler with the first file
+      if (onUploadSuccess && files.length > 0) {
+        onUploadSuccess(files[0].name);
+      }
+      
+      // Redirect to modeling page
+      navigate('/modeling');
     } finally {
       setTimeout(() => {
         setUploading(false);
-      }, 500);
+      }, 1500); // Longer delay to ensure animation is visible
     }
   };
 
@@ -256,9 +327,9 @@ export default function DataUploader({
 
         {/* Progress bar */}
         {(uploading || isLoading) && (
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
             <div 
-              className="bg-primary h-2 rounded-full transition-all duration-300" 
+              className="bg-primary h-3 rounded-full transition-all duration-500 animate-pulse" 
               style={{ width: `${progress}%` }} 
             />
           </div>

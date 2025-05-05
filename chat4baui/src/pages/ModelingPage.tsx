@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 import { Home, Table2, FileCheck2, FileType as FileIcon } from 'lucide-react';
 import { UploadedFile } from '@/components/data-sources/SampleDatasets';
 import { previewFiles, processFiles, getExtractedData } from '@/services/api';
+import axios from 'axios';
+
+// Import API base URL for API calls
+const API_BASE_URL = '/api';
 
 const STORAGE_KEY = 'chat4ba_uploaded_files';
 
@@ -24,6 +28,7 @@ interface DisplayedFile extends UploadedFile {
   size?: string;
   status: 'success' | 'processing' | 'error';
   extension: string;
+  type?: string;
 }
 
 interface DataPreview {
@@ -74,6 +79,34 @@ const ModelingPage = () => {
   useEffect(() => {
     loadUploadedFiles();
     fetchExtractedData();
+    
+    // Also load files from the newer localStorage key
+    const newSavedFiles = localStorage.getItem('uploadedFiles');
+    if (newSavedFiles) {
+      try {
+        const files = JSON.parse(newSavedFiles);
+        const transformedFiles: DisplayedFile[] = files.map(file => {
+          const nameParts = file.name.split('.');
+          const extension = nameParts.length > 1 ? nameParts[nameParts.length - 1].toLowerCase() : 'unknown';
+          return {
+            name: file.name,
+            size: formatFileSize(file.size),
+            timestamp: new Date(file.date).toLocaleString(),
+            status: 'success',
+            extension,
+            type: file.type || 'unknown'
+          };
+        });
+        // Combine with existing files, avoiding duplicates
+        setUploadedFiles(prevFiles => {
+          const existingFileNames = new Set(prevFiles.map(f => f.name));
+          const newFiles = transformedFiles.filter(f => !existingFileNames.has(f.name));
+          return [...prevFiles, ...newFiles];
+        });
+      } catch (error) {
+        console.error('Error parsing files from new storage:', error);
+      }
+    }
   }, []);
 
   const loadUploadedFiles = () => {
@@ -87,7 +120,8 @@ const ModelingPage = () => {
           return {
             ...file,
             status: 'success',
-            extension
+            extension,
+            type: 'unknown'
           };
         });
         setUploadedFiles(transformedFiles);
@@ -101,10 +135,34 @@ const ModelingPage = () => {
   const fetchExtractedData = async () => {
     setIsLoadingExtractedData(true);
     try {
-      const data = await getExtractedData();
+      console.log('Fetching extracted data from backend...');
+      const response = await getExtractedData();
+      console.log('Received extracted data:', response);
+      
+      // Ensure we have a properly structured response to work with
+      const data = {
+        success: response.success !== false,
+        files: Array.isArray(response.data) 
+          ? response.data.map(item => ({
+              fileName: item.filename || '',
+              content: Array.isArray(item.content) ? item.content : [],
+              metadata: item.metadata || { rows: 0, columns: 0 }
+            }))
+          : []
+      };
+      
+      console.log('Formatted extracted data:', data);
       setExtractedData(data);
     } catch (error) {
       console.error('Error fetching extracted data:', error);
+      // Provide a default empty response structure instead of failing
+      setExtractedData({
+        success: true,
+        files: []
+      });
+      toast.error('Could not load extracted data', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
     } finally {
       setIsLoadingExtractedData(false);
     }
@@ -238,9 +296,11 @@ const ModelingPage = () => {
   };
 
   const removeFile = (fileName: string) => {
+    // First update UI state
     const updatedStateFiles = uploadedFiles.filter(file => file.name !== fileName);
     setUploadedFiles(updatedStateFiles);
     
+    // Update localStorage
     const savedFiles = localStorage.getItem(STORAGE_KEY);
     if (savedFiles) {
       try {
@@ -252,6 +312,29 @@ const ModelingPage = () => {
         toast.error('Failed to update stored file list');
       }
     }
+    
+    // Also remove from uploadedFiles key
+    const newSavedFiles = localStorage.getItem('uploadedFiles');
+    if (newSavedFiles) {
+      try {
+        const files = JSON.parse(newSavedFiles);
+        const updatedFiles = files.filter(file => file.name !== fileName);
+        localStorage.setItem('uploadedFiles', JSON.stringify(updatedFiles));
+      } catch (error) {
+        console.error('Error updating uploadedFiles:', error);
+      }
+    }
+    
+    // Delete from Qdrant/backend using axios
+    axios.delete(`${API_BASE_URL}/data/delete`, {
+      params: { filename: fileName }
+    })
+      .then(response => {
+        console.log('File successfully deleted from backend:', response.data);
+      })
+      .catch(error => {
+        console.error('Error deleting file from backend:', error);
+      });
     
     if (selectedFile === fileName) {
       setSelectedFile(null);
@@ -300,62 +383,35 @@ const ModelingPage = () => {
     }
   };
 
-  const generateDataPreview = (fileName: string): DataPreview | null => {
-    if (fileName === 'sales_data.csv') {
-      return {
-        headers: ['ID', 'Date', 'Product', 'Quantity', 'Price', 'Total'],
-        rows: [
-          ['1001', '2023-01-15', 'Laptop', '2', '$999.99', '$1,999.98'],
-          ['1002', '2023-01-15', 'Mouse', '5', '$24.99', '$124.95'],
-          ['1003', '2023-01-16', 'Monitor', '3', '$249.99', '$749.97'],
-          ['1004', '2023-01-17', 'Keyboard', '4', '$49.99', '$199.96'],
-          ['1005', '2023-01-18', 'Headphones', '6', '$79.99', '$479.94']
-        ]
-      };
-    } else if (fileName === 'marketing_campaigns.csv') {
-      return {
-        headers: ['Campaign ID', 'Name', 'Start Date', 'End Date', 'Budget', 'ROI'],
-        rows: [
-          ['C001', 'Summer Sale', '2023-06-01', '2023-06-30', '$5,000', '245%'],
-          ['C002', 'Back to School', '2023-08-15', '2023-09-15', '$8,000', '187%'],
-          ['C003', 'Holiday Special', '2023-12-01', '2023-12-25', '$12,000', '320%'],
-          ['C004', 'New Year Deal', '2024-01-01', '2024-01-15', '$4,000', '210%']
-        ]
-      };
-    } else if (fileName === 'customer_schema.json') {
-      return {
-        headers: ['Field', 'Type', 'Required', 'Description'],
-        rows: [
-          ['id', 'string', 'true', 'Unique customer identifier'],
-          ['name', 'object', 'true', 'Customer name object'],
-          ['email', 'string', 'true', 'Customer email address'],
-          ['phone', 'string', 'false', 'Customer phone number'],
-          ['address', 'object', 'false', 'Customer address details']
-        ]
-      };
-    } else if (fileName === 'product_inventory.xlsx') {
-      return {
-        headers: ['Product ID', 'Name', 'Category', 'Stock', 'Reorder Level', 'Supplier'],
-        rows: [
-          ['P001', 'Ultra Laptop', 'Electronics', '45', '10', 'TechSupplier Inc'],
-          ['P002', 'Wireless Mouse', 'Accessories', '120', '30', 'AccessoriesRUs'],
-          ['P003', '27" Monitor', 'Electronics', '28', '15', 'DisplayTech'],
-          ['P004', 'Mechanical Keyboard', 'Accessories', '65', '20', 'KeyboardMasters'],
-          ['P005', 'Noise-Canceling Headphones', 'Audio', '34', '15', 'SoundWave']
-        ]
-      };
-    }
+  const generateDataPreview = (fileName: string): DataPreview | null => {  
+    console.log('Generating data preview for:', fileName);
     
     // Try to find in extracted data
-    if (extractedData) {
+    if (extractedData && extractedData.files) {
       const fileData = extractedData.files.find(f => f.fileName === fileName);
-      if (fileData && fileData.content.length > 0) {
-        const headers = Object.keys(fileData.content[0]);
+      if (fileData && fileData.content && Array.isArray(fileData.content) && fileData.content.length > 0) {
+        console.log('Found file data:', fileData);
+        // Make sure we have valid content before trying to extract headers
+        const firstRow = fileData.content[0] || {};
+        const headers = Object.keys(firstRow);
+        if (headers.length === 0) {
+          console.log('No headers found in content');
+          return null;
+        }
+        
+        // Map rows with safe handling for null values
         const rows = fileData.content.map(row => 
-          headers.map(header => String(row[header] || ''))
+          headers.map(header => {
+            const value = row[header];
+            return value !== null && value !== undefined ? String(value) : '';
+          })
         );
         return { headers, rows };
+      } else {
+        console.log('No content found for file:', fileName);
       }
+    } else {
+      console.log('No extracted data available');
     }
     
     return null;
@@ -363,19 +419,121 @@ const ModelingPage = () => {
 
   // Get data for SchemaGrid from extracted files
   const getSchemaFromExtractedData = () => {
-    if (!extractedData) return [];
+    if (!extractedData || !extractedData.files || !Array.isArray(extractedData.files)) {
+      console.log('No valid extracted data available for schema generation');
+      return [];
+    }
     
     return extractedData.files.map(file => {
-      const headers = file.content.length > 0 ? Object.keys(file.content[0]) : [];
-        return {
+      // Make sure we have content and it's an array
+      const content = Array.isArray(file.content) ? file.content : [];
+      const firstRow = content.length > 0 ? content[0] : {};
+      const headers = Object.keys(firstRow);
+      const randomId = Math.random().toString(36).substring(2, 9);
+      
+      return {
+        id: `extracted-${randomId}`,
         name: file.fileName,
-        fields: headers.map(header => ({
+        title: file.fileName,
+        columns: headers.map(header => ({
           name: header,
-          type: 'string',
-          required: false
-        }))
-        };
-      });
+          type: 'string'
+        })),
+        position: {
+          x: Math.floor(Math.random() * 300),
+          y: Math.floor(Math.random() * 300)
+        }
+      };
+    });
+  };
+
+  const UploadedFilesSection = () => {
+    if (uploadedFiles.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 space-y-4 text-center p-6 border-2 border-dashed rounded-lg border-gray-300 dark:border-gray-700">
+          <FileIcon className="h-12 w-12 text-gray-400" />
+          <div>
+            <h3 className="text-lg font-medium">No files uploaded yet</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Upload files to start analyzing your data
+            </p>
+          </div>
+          <Button onClick={() => navigate('/data-sources')}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload Files
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-medium">Your Uploaded Files</h3>
+          <Button variant="outline" size="sm" onClick={() => navigate('/data-sources')}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload More
+          </Button>
+        </div>
+        
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[40px]"></TableHead>
+                <TableHead>Filename</TableHead>
+                <TableHead>Size</TableHead>
+                <TableHead>Uploaded</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {uploadedFiles.map((file, index) => (
+                <TableRow 
+                  key={`${file.name}-${index}`}
+                  className={cn(
+                    "cursor-pointer hover:bg-muted/50",
+                    selectedFile === file.name && "bg-muted/80"
+                  )}
+                  onClick={() => handleFileSelect(file.name)}
+                >
+                  <TableCell>
+                    {getFileTypeIcon(file.extension)}
+                  </TableCell>
+                  <TableCell className="font-medium">{file.name}</TableCell>
+                  <TableCell>{file.size || 'Unknown'}</TableCell>
+                  <TableCell>{file.timestamp || 'Recent'}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center space-x-2">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fetchFilePreview(file.name);
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeFile(file.name);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -389,22 +547,10 @@ const ModelingPage = () => {
               variant="outline" 
               size="sm"
               className="flex items-center gap-1 hover:scale-105 transition-transform duration-200"
-              disabled={isUploading}
+              onClick={() => navigate('/data-sources')}
             >
-              {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Upload size={16} />
-              )}
+              <Upload size={16} />
               <span>Upload Schema</span>
-              <input 
-                type="file" 
-                className="hidden" 
-                accept=".json,.sql,.csv,.xlsx,.pdf,.doc,.docx,.ppt,.pptx" 
-                onChange={handleFileUpload}
-                disabled={isUploading}
-                multiple
-              />
             </Button>
           </label>
         </div>
@@ -496,134 +642,71 @@ const ModelingPage = () => {
               )}
               
               {activeTab === 'uploaded' && (
-                <div className="p-4 flex-1 overflow-auto grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card className="col-span-1 animate-fade-in h-full flex flex-col">
-                    <CardHeader className="py-3 px-4 border-b">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base font-medium flex items-center gap-2">
-                          <FileCheck2 className="h-5 w-5" />
-                          Data Files ({uploadedFiles.length})
-                        </CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="py-0 px-0 flex-1 overflow-y-auto">
-                      {uploadedFiles.length > 0 ? (
-                        <div className="space-y-0">
-                          {uploadedFiles.map((file, index) => (
-                            <div 
-                              key={file.name + index}
-                              className={cn(
-                                "flex items-center justify-between p-3 border-b last:border-b-0 transition-colors cursor-pointer animate-fade-in",
-                                selectedFile === file.name 
-                                  ? "bg-primary/10 border-l-4 border-l-primary" 
-                                  : "hover:bg-accent/30",
-                              )}
-                              style={{animationDelay: `${index * 50}ms`}}
-                              onClick={() => fetchFilePreview(file.name)}
-                            >
-                              <div className="flex items-center gap-3 overflow-hidden flex-1">
-                                {getFileTypeIcon(file.extension)}
-                                <div className="flex flex-col overflow-hidden">
-                                  <span className="text-sm font-medium truncate">{file.name}</span>
-                                  <span className="text-xs text-muted-foreground">{file.timestamp}</span>
-                                </div>
-                              </div>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 ml-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); fetchFilePreview(file.name); }}>
-                                        <Eye className="h-4 w-4 mr-2" />
-                                        Preview
-                                      </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}>
-                                        <X className="h-4 w-4 mr-2" />
-                                        Remove
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground flex flex-col items-center justify-center h-full">
-                          <FileCheck2 className="h-12 w-12 mb-4 text-gray-400" />
-                          <p className="font-medium">No files processed yet</p>
-                          <p className="text-sm mt-1">Upload files from the Data Sources page.</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                <div className="p-6 space-y-6">
+                  <UploadedFilesSection />
                   
-                  <Card className="col-span-1 md:col-span-2 animate-fade-in h-full flex flex-col">
-                    <CardHeader className="py-3 px-4 border-b">
-                      <CardTitle className="text-base font-medium flex items-center gap-2">
-                        <Eye className="h-5 w-5" />
-                        {selectedFile ? `Preview: ${selectedFile}` : 'Select a file to preview'}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-auto p-4">
-                      {isPreviewLoading ? (
-                        <div className="flex items-center justify-center h-full">
-                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                      ) : selectedFilePreview ? (
-                        <div className="space-y-4">
-                          {selectedFilePreview.map((chunk, idx) => (
-                            <div key={idx} className="mb-4 pb-4 border-b last:border-0 animate-fade-in" style={{animationDelay: `${idx * 100}ms`}}>
-                              {chunk.metadata?.table ? (
-                                <div className="overflow-x-auto">
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        {chunk.metadata.headers.map((header, i) => (
-                                          <TableHead key={i} className="font-medium">{header}</TableHead>
-                                        ))}
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {chunk.metadata.rows.slice(0, 20).map((row, i) => (
-                                        <TableRow key={i} className="hover:bg-muted/50 animate-fade-in" style={{animationDelay: `${i * 50}ms`}}>
-                                          {chunk.metadata.headers.map((header, j) => (
-                                            <TableCell key={j}>{row[header]}</TableCell>
+                  {selectedFile && (
+                    <Card className="mt-6">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg">File Preview: {selectedFile}</CardTitle>
+                        <CardDescription>
+                          Preview of the selected file content
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {isPreviewLoading ? (
+                          <div className="flex items-center justify-center h-40">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                          </div>
+                        ) : selectedFilePreview ? (
+                          <div className="max-h-96 overflow-auto">
+                            {selectedFilePreview.map((preview, index) => (
+                              <div key={index} className="mb-4">
+                                {preview.metadata?.table ? (
+                                  <div className="border rounded-lg overflow-hidden">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          {preview.metadata.headers.map((header, i) => (
+                                            <TableHead key={i}>{header}</TableHead>
                                           ))}
                                         </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
-                                  {chunk.metadata.rows.length > 20 && (
-                                    <p className="text-center text-sm text-muted-foreground mt-2">
-                                      Showing 20 of {chunk.metadata.rows.length} rows
-                                    </p>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {preview.metadata.rows.slice(0, 10).map((row, rowIndex) => (
+                                          <TableRow key={rowIndex}>
+                                            {preview.metadata.headers.map((header, colIndex) => (
+                                              <TableCell key={colIndex}>
+                                                {row[header]}
+                                              </TableCell>
+                                            ))}
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                    {preview.metadata.rows.length > 10 && (
+                                      <div className="p-2 text-center text-sm text-muted-foreground bg-muted/20">
+                                        Showing 10 of {preview.metadata.rows.length} rows
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <pre className="p-4 bg-muted/30 rounded-lg text-sm overflow-auto">
+                                    {preview.content}
+                                  </pre>
                                 )}
                               </div>
-                              ) : (
-                                <>
-                                  <p className="whitespace-pre-wrap text-sm">{chunk.content}</p>
-                                  {chunk.metadata && Object.keys(chunk.metadata).length > 0 && (
-                                    <div className="mt-2 text-xs text-muted-foreground">
-                                      <strong>Metadata:</strong>
-                                      <pre className="text-xs bg-muted/50 p-2 rounded mt-1">{JSON.stringify(chunk.metadata, null, 2)}</pre>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground flex flex-col items-center justify-center h-full">
-                          <Eye className="h-12 w-12 mb-4 text-gray-400" />
-                          <p className="font-medium">
-                            {selectedFile ? 'No preview available for this file.' : 'Select a file from the list to see its preview.'}
-                          </p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-40 space-y-2">
+                            <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                            <p>No preview available</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               )}
             </div>
