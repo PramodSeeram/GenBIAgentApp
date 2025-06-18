@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -47,7 +46,7 @@ export const Sidebar = () => {
       
       <nav className="flex-1 py-4 px-2">
         <ul className="space-y-1">
-          <NavItem to="/" icon={<Home />} label="Home" collapsed={collapsed} />
+          <NavItem to="/home" icon={<Home />} label="Home" collapsed={collapsed} />
           <NavItem to="/data-sources" icon={<Database />} label="Data Sources" collapsed={collapsed} />
           <NavItem to="/chat" icon={<MessageSquare />} label="Chat" collapsed={collapsed} />
           <NavItem to="/dashboard" icon={<LayoutDashboard />} label="Dashboard" collapsed={collapsed} />

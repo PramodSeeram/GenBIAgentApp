@@ -1,11 +1,10 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
     --card: 0 0% 100%;
@@ -93,12 +92,13 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    background: hsl(var(--background)) !important;
   }
 }
 
 @layer components {
   .hero-gradient {
-    @apply bg-gradient-to-r from-chat4ba-700 to-chat4ba-900;
+    background: linear-gradient(135deg, #0A4D8C 0%, #0A2F5C 100%);
   }
   
   .dashboard-grid {
@@ -159,7 +159,7 @@
   
   /* Animation utility classes */
   .animate-fade-in {
-    animation: fadeIn 0.4s ease-out forwards;
+    animation: fadeIn 0.5s ease-in;
   }
   
   .animate-slide-in {
