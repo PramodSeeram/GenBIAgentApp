@@ -24,7 +24,7 @@ const ModelHeader = () => {
           <Button 
             variant="ghost" 
             size="sm"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/home')}
             className="flex items-center gap-2"
           >
             <Home className="h-4 w-4" />

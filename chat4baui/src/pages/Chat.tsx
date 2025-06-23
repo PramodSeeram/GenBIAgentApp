@@ -248,7 +248,7 @@ const Chat = () => {
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate('/')} className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => navigate('/home')} className="flex items-center gap-1">
               <Home size={16} />
               <span>Home</span>
             </Button>
