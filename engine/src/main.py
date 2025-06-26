@@ -6,6 +6,7 @@ import os
 # Import router modules directly
 from src.api.routers import router as api_router
 from src.database.vector_db.qdrant_client import initialize_qdrant_client # For startup check
+from src.database.relational.init_db import init_database # For database initialization
 
 # Configure basic logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -39,6 +40,10 @@ async def startup_event():
     """Initialize resources on startup."""
     logger.info("Application startup sequence initiated...")
     try:
+        # Initialize database tables
+        init_database()
+        logger.info("Database tables initialized successfully on startup.")
+        
         # Initialize Qdrant client and check connection
         initialize_qdrant_client()
         logger.info("Qdrant client connection checked successfully on startup.")

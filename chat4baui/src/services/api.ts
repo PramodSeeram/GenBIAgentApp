@@ -4,6 +4,42 @@ import axios from 'axios';
 // Base API URL - should point to your backend server via the proxy defined in vite.config.ts
 const API_BASE_URL = '/api';
 
+// Helper function to get auth headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+// Helper function to handle token refresh
+const refreshToken = async () => {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+      refresh_token: refreshToken
+    });
+
+    if (response.status === 200) {
+      localStorage.setItem('access_token', response.data.access_token);
+      return response.data.access_token;
+    } else {
+      // Refresh failed, redirect to login
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      throw new Error('Token refresh failed');
+    }
+  } catch (error) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    window.location.href = '/login';
+    throw error;
+  }
+};
+
 // Create a more robust API service with proper error handling
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -13,9 +49,15 @@ const api = axios.create({
   }
 });
 
-// Add request interceptor for debugging
+// Add request interceptor for authentication and debugging
 api.interceptors.request.use(
   config => {
+    // Add auth token to all requests
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, config);
     return config;
   },
@@ -25,17 +67,35 @@ api.interceptors.request.use(
   }
 );
 
-// Add response interceptor for better error handling
+// Add response interceptor for better error handling and token refresh
 api.interceptors.response.use(
   response => {
     console.log(`API Response: ${response.status}`, response.data);
     return response;
   },
-  error => {
+  async error => {
     if (error.response) {
       // The request was made and the server responded with a status code
       // that falls out of the range of 2xx
       console.error(`API Error ${error.response.status}:`, error.response.data);
+      
+      // Handle 401 Unauthorized - try to refresh token
+      if (error.response.status === 401) {
+        try {
+          const newToken = await refreshToken();
+          // Retry the original request with new token
+          const originalRequest = error.config;
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        } catch (refreshError) {
+          // Refresh failed, redirect to login
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          window.location.href = '/login';
+          return Promise.reject(new Error('Authentication failed'));
+        }
+      }
+      
       return Promise.reject(new Error(error.response.data?.detail || error.response.data?.message || `Server error: ${error.response.status}`));
     } else if (error.request) {
       // The request was made but no response was received
@@ -67,6 +127,7 @@ export const previewFiles = async (files: File[]): Promise<any> => {
     const response = await axios.post(`${API_BASE_URL}/data/preview`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+        ...getAuthHeaders(),
       },
     });
     
@@ -103,6 +164,7 @@ export const processFiles = async (files: File[]): Promise<any> => {
     const response = await axios.post(`${API_BASE_URL}/data/process`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+        ...getAuthHeaders(),
       },
     });
     
@@ -193,9 +255,22 @@ export const askAllCollections = async (query: string): Promise<any> => {
   }
 };
 
+// Authentication functions
+export const getCurrentUser = async () => {
+  return api.get('/auth/me');
+};
+
+export const logout = () => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  window.location.href = '/login';
+};
+
 export default {
   previewFiles,
   processFiles,
   getExtractedData,
   askAllCollections,
+  getCurrentUser,
+  logout,
 }; 

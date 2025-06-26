@@ -2,8 +2,8 @@
 # from fastapi import APIRouter, Request, Depends, HTTPException
 # from fastapi.responses import RedirectResponse, JSONResponse
 # from sqlalchemy.orm import Session
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from requests_oauthlib import OAuth2Session
 from urllib.parse import urlparse
@@ -11,13 +11,16 @@ import secrets
 import logging
 import json
 import base64
-# from src.database.relational.dependencies import get_user_db
+from sqlalchemy.orm import Session
+from src.database.relational.dependencies import get_user_db
 from src.api.services.auth_service import AuthService
+from src.api.services.session_service import SessionService
+from src.database.relational.crud.user import get_user_by_email, update_user_last_login, insert_new_user, get_user_by_id
 from src.config.settings import settings
-# from src.database.relational.crud.user import get_or_create_user
 
 router = APIRouter()  # Note: prefix is now handled in __init__.py 
 auth_service = AuthService(settings.GOOGLE_CLIENT_ID)
+session_service = SessionService()
 logger = logging.getLogger(__name__)
 
 GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -97,8 +100,12 @@ def google_login(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/google/callback", tags=["auth"])
-def google_callback(request: Request):
+def google_callback(request: Request, db: Session = Depends(get_user_db)):
+    """
+    Google SSO callback function that handles user authentication and database operations
+    """
     try:
+        # 1. Extract authorization code and state from Google
         code = request.query_params.get("code")
         state = request.query_params.get("state")
         
@@ -114,6 +121,7 @@ def google_callback(request: Request):
         state_data = decode_oauth_state(state)
         frontend_url = state_data.get('frontend_url', 'http://localhost:7001')
         
+        # 2. Exchange code for access token
         oauth = get_google_oauth_session(state=state)
         logger.info(f"Using redirect URI: {settings.GOOGLE_REDIRECT_URI}")
         
@@ -123,7 +131,7 @@ def google_callback(request: Request):
             code=code
         )
 
-        # Get user info from Google
+        # 3. Get user info from Google
         resp = oauth.get(GOOGLE_USERINFO_URL)
         userinfo = resp.json()
         
@@ -131,16 +139,117 @@ def google_callback(request: Request):
             logger.error("No email in userinfo")
             raise HTTPException(status_code=400, detail="Failed to get user info from Google")
 
-        # Redirect to the frontend URL from state
-        logger.info(f"Redirecting to frontend: {frontend_url}/home")
-        return RedirectResponse(url=f"{frontend_url}/home")
-        
+        # 4. Extract user information (email)
+        user_email = userinfo.get("email")
+        google_id = userinfo.get("sub")
+
+        logger.info(f"Processing Google SSO for user: {user_email} (google_id: {google_id})")
+
+        try:
+            # 5. Check if user already exists in 'users' table
+            existing_user = get_user_by_email(db, user_email)
+
+            if existing_user:
+                # 6a. User exists: Update last_login timestamp
+                update_user_last_login(db, user_email, google_id=google_id)
+                logger.info(f"User {user_email} logged in. Last login updated.")
+                current_user_role = existing_user.role
+                user_id = existing_user.id
+                user_google_id = google_id
+            else:
+                # 6b. New user: Insert into 'users' table with default role 'user'
+                new_user = insert_new_user(db, user_email, 'user', google_id=google_id)
+                logger.info(f"New user {user_email} registered with 'user' role.")
+                current_user_role = 'user'  # Default for new users
+                user_id = new_user.id
+                user_google_id = google_id
+
+            # 7. Establish Application Session
+            session_data = session_service.create_user_session(
+                user_id=user_id,
+                email=user_email,
+                role=current_user_role
+            )
+
+            # 8. Redirect User with session data
+            redirect_url = f"{frontend_url}/home?access_token={session_data['access_token']}&refresh_token={session_data['refresh_token']}&google_id={user_google_id}"
+            logger.info(f"Redirecting to frontend: {redirect_url}")
+            return RedirectResponse(url=redirect_url)
+
+        except Exception as db_error:
+            logger.error(f"Error during Google SSO callback database operation: {db_error}")
+            error_url = f"{frontend_url}/login?error=database_error"
+            return RedirectResponse(url=error_url)
+
     except Exception as e:
         logger.error(f"Error in google_callback: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        frontend_url = "http://localhost:7001"  # fallback
+        error_url = f"{frontend_url}/login?error=auth_error"
+        return RedirectResponse(url=error_url)
 
 class GoogleToken(BaseModel):
     token: str
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+@router.post("/refresh", tags=["auth"])
+def refresh_token(request: RefreshTokenRequest):
+    """
+    Refresh access token using refresh token
+    """
+    try:
+        # Verify the refresh token
+        payload = session_service.verify_token(request.refresh_token)
+        
+        # Check if it's a refresh token
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        # Create new access token
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        role = payload.get("role")
+        
+        if not user_id or not email:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        
+        access_token = session_service._create_access_token({
+            "sub": user_id,
+            "email": email,
+            "role": role
+        })
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+    except Exception as e:
+        logger.error(f"Token refresh error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+@router.get("/me", tags=["auth"])
+def get_current_user(request: Request, db: Session = Depends(get_user_db)):
+    """
+    Get current user information from token
+    """
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        
+        token = auth_header.split(" ")[1]
+        user_data = session_service.get_current_user_from_token(token)
+        user = get_user_by_id(db, user_data["user_id"])
+        return {
+            "user_id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "google_id": user.google_id
+        }
+    except Exception as e:
+        logger.error(f"Get current user error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 @router.post("/google", tags=["auth"])
 def google_auth(token_data: GoogleToken):

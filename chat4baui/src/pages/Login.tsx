@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +9,36 @@ import { toast } from 'sonner';
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Handle Google SSO callback tokens
+  useEffect(() => {
+    const accessToken = searchParams.get('access_token');
+    const refreshToken = searchParams.get('refresh_token');
+    const error = searchParams.get('error');
+
+    if (error) {
+      if (error === 'database_error') {
+        toast.error('Database error occurred during authentication. Please try again.');
+      } else if (error === 'auth_error') {
+        toast.error('Authentication error occurred. Please try again.');
+      } else {
+        toast.error('An error occurred during sign in. Please try again.');
+      }
+      return;
+    }
+
+    if (accessToken && refreshToken) {
+      // Store tokens in localStorage
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
+      
+      toast.success('Successfully signed in with Google!');
+      navigate('/home');
+    }
+  }, [searchParams, navigate]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str
 
+    # JWT Settings
+    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+
     # Database Settings
     USER_DATABASE_URL: str
     DATABASE_URL: str = "sqlite:///./main.db"
